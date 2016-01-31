@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="UTF-8">
+    <title>Qualitative Activity Recognition of Barbell Lifting Exercises by adeschen</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="stylesheets/normalize.css" media="screen">
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/github-light.css" media="screen">
+  </head>
+  <body>
+    <section class="page-header">
+      <h1 class="project-name">Qualitative Activity Recognition of Barbell Lifting Exercises</h1>
+      <h2 class="project-tagline">Machine Learning Project </h2>
+      <a href="https://github.com/adeschen/MachineLearningWeightLifting" class="btn">View on GitHub</a>
+      <a href="https://github.com/adeschen/MachineLearningWeightLifting/zipball/master" class="btn">Download .zip</a>
+      <a href="https://github.com/adeschen/MachineLearningWeightLifting/tarball/master" class="btn">Download .tar.gz</a>
+    </section>
+
+    <section class="main-content">
+      <p>The use of devices such as Jawbone Up, Nike FuelBand, and Fitbit enable the collection of a large amount of data about personal activity. While this information is usually used to assess the quantity of activity done, it could be interesting to see if it could also be used to quantify the quality of the activity done. In this context, six participants have been asked to perform barbell lifts correctly and incorrectly in 5 different ways. The data from accelerometers on the belt, forearm, arm, and dumbell were gathered.</p>
+
+<p>The goal of this project is to validate that, through the use of machine learning techniques, the manner in which people did the exercise can be predicted by using the accelerometers information.
+Data Preprocessing</p>
+
+<p>The training data for this project are available here:</p>
+
+<p><a href="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv">https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv</a></p>
+
+<p>The test data are available here:</p>
+
+<p><a href="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv">https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv</a></p>
+
+<p>In the data, the way the participants performed the barbell lifts has been classified into 5 categories:</p>
+
+<pre><code>A - Exactly according to the specification
+B - Throwing the elbows to the front
+C - Lifting the dumbbell only halfway
+D - Lowering the dumbbell only halfway
+E - Throwing the hips to the front
+</code></pre>
+
+<p>The “classe” variable is the one containing the category of the performed exercise. This is the outcome variable. All the other variables are potential predictors.</p>
+
+<pre><code>#### URl for training set
+trainUrl &lt;- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+#### Load training set
+pml_training &lt;- read.csv(url(trainUrl), row.names = 1)
+#### Number of variables
+nbrCol &lt;- ncol(pml_training)
+nbrCol
+## [1] 159
+#### Number of observations
+nbrRow &lt;- nrow(pml_training)
+nbrRow
+## [1] 19622
+</code></pre>
+
+<p>The training dataset contains 159 variables (including the outcome variable). A total of 19622 observations are present.</p>
+
+<h2>
+<a id="splitting-the-training-dataset" class="anchor" href="#splitting-the-training-dataset" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Splitting the Training Dataset</h2>
+
+<p>The initial training dataset is split into a training and testing dataset to allow out-of-sample calculation. The training set will contain 65% of the data.</p>
+
+<pre><code>#### Upload needed package
+library(caret)
+#### Set seed to enable reproducibility
+set.seed(1584)
+#### Split initial dataset in 2 partitions
+inTrain &lt;- createDataPartition(y=pml_training$classe, p=0.65, list=FALSE)
+#### Create training dataset and testing dataset
+training &lt;- pml_training[inTrain, ]
+testing  &lt;- pml_training[-inTrain, ]
+</code></pre>
+
+<h3>
+<a id="data-cleaning" class="anchor" href="#data-cleaning" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Data Cleaning</h3>
+
+<p>First, some potential predictors have missing data. Missing data can take the form of a value or no value at all.</p>
+
+<pre><code>#### Calculate the ratio of missing values for each variable 
+ratio_missing_data &lt;- apply(X = training, MARGIN = 2, 
+    FUN= function(x) {sum(is.na(x) == TRUE | x == "" | x == "#DIV/0!")/sum(length(x))})
+#### Only retained the variables with missing values
+only_missing_data &lt;- subset(ratio_missing_data, ratio_missing_data &gt; 0)
+#### See the range of the ratio of missing values for those variables
+missingDataRange &lt;- range(only_missing_data)
+missingDataRange
+## [1] 0.9800894 1.0000000
+#### Number of variables with missing data
+nbreMissingData &lt;- length(only_missing_data)
+nbreMissingData
+## [1] 100
+</code></pre>
+
+<p>There are 100 variables with missing data. The ratio of missing data, for those predictors, is very high. In fact, the minimum ratio of missing data is 0.9800894.</p>
+
+<p>All variables with missing data won’t be retained as predictors and are removed from the training dataset.</p>
+
+<pre><code>#### Select columns to retain in the dataset
+column_to_keep &lt;- !(colnames(training) %in% names(only_missing_data))
+#### New training dataset without variables with missing values
+training &lt;- training[, colnames(training)[column_to_keep]]
+</code></pre>
+
+<p>The first columns of the new training dataset contains variables which are not related to data gathered from accelerometers such time and date, name, etc… Those variables should also be removed from the training dataset.</p>
+
+<pre><code>#### A look at the first column names
+colnames(training[,1:10])
+##  [1] "user_name"            "raw_timestamp_part_1" "raw_timestamp_part_2"
+##  [4] "cvtd_timestamp"       "new_window"           "num_window"          
+##  [7] "roll_belt"            "pitch_belt"           "yaw_belt"            
+## [10] "total_accel_belt"
+#### The first 6 variables are removed from the training dataset
+training &lt;- training[ , -c(1:6)]
+#### Number of variables
+nbrCol &lt;- ncol(training)
+nbrCol
+## [1] 53
+</code></pre>
+
+<p>There is some highly correlated variables.</p>
+
+<pre><code>#### Upload needed package
+library(corrplot)
+#### Calculate correlation between variable
+corr.matrix &lt;- cor(training[,-nbrCol])
+#### Show correlation
+corrplot(corr.matrix ,method="square", type="lower", tl.cex=.55)
+</code></pre>
+
+<p><img src="https://raw.githubusercontent.com/adeschen/MachineLearningWeightLifting/master/images/corrGraph.png" alt="Correlation Graph"></p>
+
+<p>Due to the high correlation of some variables and considering the large number of variables, a principal component pre-processing will be performed. The procedure will retain 95% of the variability of the original variables.</p>
+
+<pre><code>#### Principal component pre-processing
+preProc &lt;- preProcess(training[, -nbrCol], method = "pca", thresh = 0.95)
+#### Transform training dataset using PCA result (the outcome is not used)
+trainingPC &lt;- predict(preProc, training[, -nbrCol])
+</code></pre>
+
+<p>The processed dataset contains 25 predictors.</p>
+
+<h2>
+<a id="method-selection" class="anchor" href="#method-selection" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Method Selection</h2>
+
+<p>The random forest method has been selected since it is among the top performing algorithms. The random forest is also an appropriate model to perform classification of categorical outcomes.
+Model Training</p>
+
+<p>A k-fold cross validation will be used during the training step. This method involves splitting the dataset into k-subsets. In this case, the number of folds has been set to 4.</p>
+
+<pre><code>#### Set the number of subsets for the k-fold cross validation
+numberOfCrossValidation &lt;- 4
+#### The k-fold cross validation is set using "cv" option for method parameter
+trainingControl &lt;- trainControl(method = "cv", number = numberOfCrossValidation, 
+                                    allowParallel = TRUE)
+#### Build a random forest model using k-fold cross validation
+trainingModel &lt;- train(training$classe ~ ., data=trainingPC, method="rf", 
+                        trControl = trainingControl)
+trainingModel
+## Random Forest 
+## 
+## 12757 samples
+##    24 predictor
+##     5 classes: 'A', 'B', 'C', 'D', 'E' 
+## 
+## No pre-processing
+## Resampling: Cross-Validated (4 fold) 
+## Summary of sample sizes: 9568, 9568, 9568, 9567 
+## Resampling results across tuning parameters:
+## 
+##   mtry  Accuracy   Kappa      Accuracy SD  Kappa SD   
+##    2    0.9636278  0.9539771  0.001932411  0.002432382
+##   13    0.9572783  0.9459477  0.004400744  0.005556971
+##   25    0.9531237  0.9406966  0.004704790  0.005940001
+## 
+## Accuracy was used to select the optimal model using  the largest value.
+## The final value used for the model was mtry = 2.
+
+#### See the result for each submodel
+plot(trainingModel)
+</code></pre>
+
+<p><img src="https://raw.githubusercontent.com/adeschen/MachineLearningWeightLifting/master/images/trainingModel.png" alt="Training Model Graph"></p>
+
+<p>The training method used accuracy to select the optimal model. The importance of each variable in the final model can be visualized.</p>
+
+<pre><code>#### Calculate the importance of each variable in the model
+mostImportantVar &lt;- varImp(trainingModel, scale = FALSE)
+plot(mostImportantVar)
+</code></pre>
+
+<p><img src="https://raw.githubusercontent.com/adeschen/MachineLearningWeightLifting/master/images/variableImportance.png" alt="Variable Importance Graph"></p>
+
+<p>Using the final model, the confusion matrix and statistics are extracted from the training dataset.</p>
+
+<pre><code>#### Calculate the confusion matrix using predicted versus real results
+conf.matrix &lt;- confusionMatrix(training$classe, 
+                                predict(trainingModel, trainingPC))
+conf.matrix
+## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 3627    0    0    0    0
+##          B    0 2469    0    0    0
+##          C    0    0 2225    0    0
+##          D    0    0    0 2091    0
+##          E    0    0    0    0 2345
+## 
+## Overall Statistics
+##                                      
+##                Accuracy : 1          
+##                  95% CI : (0.9997, 1)
+##     No Information Rate : 0.2843     
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16  
+##                                      
+##                   Kappa : 1          
+##  Mcnemar's Test P-Value : NA         
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            1.0000   1.0000   1.0000   1.0000   1.0000
+## Specificity            1.0000   1.0000   1.0000   1.0000   1.0000
+## Pos Pred Value         1.0000   1.0000   1.0000   1.0000   1.0000
+## Neg Pred Value         1.0000   1.0000   1.0000   1.0000   1.0000
+## Prevalence             0.2843   0.1935   0.1744   0.1639   0.1838
+## Detection Rate         0.2843   0.1935   0.1744   0.1639   0.1838
+## Detection Prevalence   0.2843   0.1935   0.1744   0.1639   0.1838
+## Balanced Accuracy      1.0000   1.0000   1.0000   1.0000   1.0000
+</code></pre>
+
+<p>Based on the accuracy results from the confusion matrix on the training data, the accuracy is 100%.</p>
+
+<h2>
+<a id="out-of-sample-estimation" class="anchor" href="#out-of-sample-estimation" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Out-of-sample Estimation</h2>
+
+<p>The testing test is used to estimate the out of sample error. The same cleaning steps must be applied to the testing dataset.</p>
+
+<pre><code>#### New testing dataset without variables with missing values
+testing &lt;- testing[, colnames(testing)[column_to_keep]]
+#### The first 6 variables are removed from the testing dataset
+testing &lt;- testing[ , -c(1:6)]
+#### Transform testing using PCA result
+testingPC &lt;- predict(preProc, testing[, -nbrCol])
+</code></pre>
+
+<p>Using the obtained model, the confusion matrix and statistics are extracted from the testing dataset.</p>
+
+<pre><code>#### Calculate the confusion matrix on the testing dataset
+conf.matrix &lt;- confusionMatrix(testing$classe, 
+                               predict(trainingModel, testingPC))
+conf.matrix
+## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction    A    B    C    D    E
+##          A 1927   10   13    1    2
+##          B   21 1293   14    0    0
+##          C    3   12 1172    9    1
+##          D    1    0   36 1084    4
+##          E    0    9   11    9 1233
+## 
+## Overall Statistics
+##                                           
+##                Accuracy : 0.9773          
+##                  95% CI : (0.9735, 0.9807)
+##     No Information Rate : 0.2843          
+##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+##                                           
+##                   Kappa : 0.9713          
+##  Mcnemar's Test P-Value : NA              
+## 
+## Statistics by Class:
+## 
+##                      Class: A Class: B Class: C Class: D Class: E
+## Sensitivity            0.9872   0.9766   0.9406   0.9828   0.9944
+## Specificity            0.9947   0.9937   0.9956   0.9929   0.9948
+## Pos Pred Value         0.9867   0.9736   0.9791   0.9636   0.9770
+## Neg Pred Value         0.9949   0.9944   0.9869   0.9967   0.9988
+## Prevalence             0.2843   0.1929   0.1815   0.1607   0.1806
+## Detection Rate         0.2807   0.1883   0.1707   0.1579   0.1796
+## Detection Prevalence   0.2845   0.1934   0.1744   0.1639   0.1838
+## Balanced Accuracy      0.9910   0.9851   0.9681   0.9878   0.9946
+</code></pre>
+
+<p>Based on the accuracy results from the confusion matrix on the training data, the accuracy is expected to be 97.73% and the out-of-sample error rate is expected to be 2.27%.</p>
+
+<h2>
+<a id="prediction-of-20-test-cases" class="anchor" href="#prediction-of-20-test-cases" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Prediction of 20 test cases</h2>
+
+<p>The model is used to predict 20 test cases.</p>
+
+<pre><code>#### URL for test cases
+testingCasesURL &lt;- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+#### Load test cases
+testingCases &lt;- read.csv(url(testingCasesURL), row.names = 1)
+#### Prepare test cases by keeping only pertinent variables
+testingCases &lt;- testingCases[, colnames(testingCases) %in% colnames(training)]
+#### Transform test cases using PCA result
+testingCasesPC &lt;- predict(preProc, testingCases)
+#### Predict classes using the model
+predictedValues &lt;- predict(trainingModel, testingCasesPC)
+#### View predictions
+predictedValues
+##  [1] B A C A A E D B A A A C B A E E A B B B
+## Levels: A B C D E
+</code></pre>
+
+<h2>
+<a id="references" class="anchor" href="#references" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>References</h2>
+
+<p>The data for this project come from this source: <a href="http://groupware.les.inf.puc-rio.br/har">http://groupware.les.inf.puc-rio.br/har</a>.</p>
+
+<p>Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers’ Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.</p>
+
+      <footer class="site-footer">
+        <span class="site-footer-owner"><a href="https://github.com/adeschen/MachineLearningWeightLifting">Qualitative Activity Recognition of Barbell Lifting Exercises</a> is maintained by <a href="https://github.com/adeschen">adeschen</a>.</span>
+
+        <span class="site-footer-credits">This page was generated by <a href="https://pages.github.com">GitHub Pages</a> using the <a href="https://github.com/jasonlong/cayman-theme">Cayman theme</a> by <a href="https://twitter.com/jasonlong">Jason Long</a>.</span>
+      </footer>
+
+    </section>
+
+  
+  </body>
+</html>
