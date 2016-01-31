@@ -51,7 +51,6 @@ nbrCol
 #### Number of observations
 nbrRow <- nrow(pml_training)
 nbrRow
-
 ```
 
 The training dataset contains `r nbrCol` variables (including the 
@@ -96,9 +95,8 @@ nbreMissingData
 ```
 
 There are `r nbreMissingData` variables with missing data. The ratio of missing 
-data, for those predictors, is very high. In fact, all 
-variables with missing data have a ratio of missing data 
-of `r missingDataRange[1]`. 
+data, for those predictors, is very high. In fact, the minimum ratio of 
+missing data is `r missingDataRange[1]`. 
 
 All variables with missing data won't be retained as predictors and are removed 
 from the training dataset.
@@ -170,6 +168,7 @@ trainingControl <- trainControl(method = "cv", number = numberOfCrossValidation,
 #### Build a random forest model using k-fold cross validation
 trainingModel <- train(training$classe ~ ., data=trainingPC, method="rf", 
                         trControl = trainingControl)
+trainingModel
 #### See the result for each submodel
 plot(trainingModel)
 ```
