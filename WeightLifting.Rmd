@@ -1,0 +1,267 @@
+---
+title: "Qualitative Activity Recognition of Barbell Lifting Exercises"
+date: "January 31, 2016"
+output: html_document
+---
+
+The use of devices such as Jawbone Up, Nike FuelBand, and Fitbit enable the 
+collection of a large amount of data about personal activity. While this 
+information is usually used to assess the quantity of activity done, it could 
+be interesting to see if it could also be used to quantify the quality of the 
+activity done. In this context, six participants have been asked to perform 
+barbell lifts correctly and incorrectly in 5 different ways. The data from 
+accelerometers on the belt, forearm, arm, and dumbell were gathered.
+
+The goal of this project is to validate that, through the use of machine 
+learning techniques, the manner in which people did the exercise can be 
+predicted by using the accelerometers information.
+
+
+## Data Preprocessing
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+In the data, the way the participants performed the barbell lifts has been 
+classified into 5 categories:
+
+* A - Exactly according to the specification
+* B - Throwing the elbows to the front
+* C - Lifting the dumbbell only halfway
+* D - Lowering the dumbbell only halfway
+* E - Throwing the hips to the front
+
+The "classe" variable is the one containing the category of the performed 
+exercise. This is the outcome variable. All the other variables are 
+potential predictors.
+
+```{r loadData, collapse=TRUE}
+#### URl for training set
+trainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+#### Load training set
+pml_training <- read.csv(url(trainUrl), row.names = 1)
+#### Number of variables
+nbrCol <- ncol(pml_training)
+nbrCol
+#### Number of observations
+nbrRow <- nrow(pml_training)
+nbrRow
+
+```
+
+The training dataset contains `r nbrCol` variables (including the 
+outcome variable). A total of `r nbrRow` observations are present.
+
+## Splitting the Training Dataset
+
+The initial training dataset is split into a training and testing dataset to
+allow out-of-sample calculation. The training set will contain 65% of
+the data.
+
+```{r splitting}
+#### Upload needed package
+library(caret)
+#### Set seed to enable reproducibility
+set.seed(1584)
+#### Split initial dataset in 2 partitions
+inTrain <- createDataPartition(y=pml_training$classe, p=0.65, list=FALSE)
+#### Create training dataset and testing dataset
+training <- pml_training[inTrain, ]
+testing  <- pml_training[-inTrain, ]
+```
+
+
+## Data cleaning
+
+First, some potential predictors have missing data. Missing data can take the 
+form of a \code{NA} value or no value at all.
+
+```{r missingData, collapse=TRUE}
+#### Calculate the ratio of missing values for each variable 
+ratio_missing_data <- apply(X = training, MARGIN = 2, 
+    FUN= function(x) {sum(is.na(x) == TRUE | x == "" | x == "#DIV/0!")/sum(length(x))})
+#### Only retained the variables with missing values
+only_missing_data <- subset(ratio_missing_data, ratio_missing_data > 0)
+#### See the range of the ratio of missing values for those variables
+missingDataRange <- range(only_missing_data)
+missingDataRange
+#### Number of variables with missing data
+nbreMissingData <- length(only_missing_data)
+nbreMissingData
+```
+
+There are `r nbreMissingData` variables with missing data. The ratio of missing 
+data, for those predictors, is very high. In fact, all 
+variables with missing data have a ratio of missing data 
+of `r missingDataRange[1]`. 
+
+All variables with missing data won't be retained as predictors and are removed 
+from the training dataset.
+
+```{r removeMissing, collapse=TRUE}
+#### Select columns to retain in the dataset
+column_to_keep <- !(colnames(training) %in% names(only_missing_data))
+#### New training dataset without variables with missing values
+training <- training[, colnames(training)[column_to_keep]]
+```
+
+The first columns of the new training dataset contains variables which are not
+related to data gathered from accelerometers such time and date, name, etc... 
+Those variables should also be removed from the training dataset.
+
+```{r removeNotRelated, collapse=TRUE}
+#### A look at the first column names
+colnames(training[,1:10])
+#### The first 6 variables are removed from the training dataset
+training <- training[ , -c(1:6)]
+#### Number of variables
+nbrCol <- ncol(training)
+nbrCol
+```
+
+There is some highly correlated variables.
+
+```{r corr}
+#### Upload needed package
+library(corrplot)
+#### Calculate correlation between variable
+corr.matrix <- cor(training[,-nbrCol])
+#### Show correlation
+corrplot(corr.matrix ,method="square", type="lower", tl.cex=.55)
+```
+
+Due to the high correlation of some variables and considering the large
+number of variables, a principal component pre-processing will be performed. 
+The procedure will retain 95% of the variability of the original variables.
+
+```{r pca, collapse=TRUE}
+#### Principal component pre-processing
+preProc <- preProcess(training[, -nbrCol], method = "pca", thresh = 0.95)
+#### Transform training dataset using PCA result (the outcome is not used)
+trainingPC <- predict(preProc, training[, -nbrCol])
+```
+
+The processed dataset contains `r length(trainingPC)` predictors.
+
+
+## Method Selection
+
+The random forest method has been selected since it is among the top performing 
+algorithms. The random forest is also an appropriate model to perform 
+classification of categorical outcomes.
+
+## Model Training
+
+A k-fold cross validation will be used during the training step. This method 
+involves splitting the dataset into k-subsets. In this case, the number of 
+folds has been set to 4. 
+
+```{r trainModel, fig.height=5, warning=FALSE, error=FALSE}
+#### Set the number of subsets for the k-fold cross validation
+numberOfCrossValidation <- 4
+#### The k-fold cross validation is set using "cv" option for method parameter
+trainingControl <- trainControl(method = "cv", number = numberOfCrossValidation, 
+                                    allowParallel = TRUE)
+#### Build a random forest model using k-fold cross validation
+trainingModel <- train(training$classe ~ ., data=trainingPC, method="rf", 
+                        trControl = trainingControl)
+#### See the result for each submodel
+plot(trainingModel)
+```
+
+The training method used accuracy to select the optimal model.
+The selected model is `r trainingModel$bestTune`.
+
+The importance of each variable in the final model can be visualized.
+
+```{r trainModelPlot, warning=FALSE, comment=FALSE}
+#### Calculate the importance of each variable in the model
+mostImportantVar <- varImp(trainingModel, scale = FALSE)
+plot(mostImportantVar)
+```
+
+Using the final model, the confusion matrix and statistics are extracted 
+from the training dataset. 
+
+```{r confusionIn, collapse=TRUE}
+#### Calculate the confusion matrix using predicted versus real results
+conf.matrix <- confusionMatrix(training$classe, 
+                                predict(trainingModel, trainingPC))
+conf.matrix
+```
+
+Based on the accuracy results from the confusion matrix on the training data, 
+the accuracy is `r round(conf.matrix$overall[["Accuracy"]] * 100, 2)`%.
+
+
+## Out-of-sample Estimation
+
+The testing test is used to estimate the out of sample error. The same 
+cleaning steps must be applied to the testing dataset.
+
+```{r cleaningTest, collapse=TRUE}
+
+#### New testing dataset without variables with missing values
+testing <- testing[, colnames(testing)[column_to_keep]]
+#### The first 6 variables are removed from the testing dataset
+testing <- testing[ , -c(1:6)]
+#### Transform testing using PCA result
+testingPC <- predict(preProc, testing[, -nbrCol])
+```
+
+Using the obtained model, the confusion matrix and statistics are extracted 
+from the testing dataset. 
+
+```{r confusionOut, collapse=TRUE}
+#### Calculate the confusion matrix on the testing dataset
+conf.matrix <- confusionMatrix(testing$classe, 
+                               predict(trainingModel, testingPC))
+conf.matrix
+```
+
+Based on the accuracy results from the confusion matrix on the training data, 
+the accuracy is expected to be 
+`r round((conf.matrix$overall[["Accuracy"]] * 100), 2)`% and
+the out-of-sample error rate is expected to be 
+`r round(((1.0 - conf.matrix$overall[["Accuracy"]]) * 100), 2)`%.
+
+
+## Prediction of 20 test cases
+
+The model is used to predict 20 test cases.
+
+```{r prediction, collapse=TRUE}
+#### URL for test cases
+testingCasesURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+#### Load test cases
+testingCases <- read.csv(url(testingCasesURL), row.names = 1)
+#### Prepare test cases by keeping only pertinent variables
+testingCases <- testingCases[, colnames(testingCases) %in% colnames(training)]
+#### Transform test cases using PCA result
+testingCasesPC <- predict(preProc, testingCases)
+#### Predict classes using the model
+predictedValues <- predict(trainingModel, testingCasesPC)
+#### View predictions
+predictedValues
+```
+
+
+
+## References
+
+The data for this project come from this 
+source: <http://groupware.les.inf.puc-rio.br/har>.
+
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, 
+H. Wearable Computing: Accelerometers' Data Classification of Body 
+Postures and Movements. Proceedings of 21st Brazilian Symposium on 
+Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. 
+In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer 
+Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. 
+DOI: 10.1007/978-3-642-34459-6_6.
+
